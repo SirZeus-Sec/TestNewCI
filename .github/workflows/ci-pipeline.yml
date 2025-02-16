@@ -1,0 +1,70 @@
+name: CI Pipeline
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  security_scan:
+    name: Secret Scan with Gitleaks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Required for proper scanning
+
+      - name: Run Gitleaks
+        id: gitleaks
+        continue-on-error: true
+        run: |
+          docker run --rm -v $(pwd):/path zricethezav/gitleaks detect --source="/path" --report-format=json --report-path=gitleaks-report.json || true
+
+      - name: Check for Secrets & Notify Discord
+        run: |
+          if [ -s gitleaks-report.json ]; then
+            PAYLOAD='{
+              "content": "🚨 **Secret Leak Detected in PR!** 🔒",
+              "embeds": [
+                {
+                  "title": "Gitleaks Found Secrets",
+                  "description": "Secrets detected in `${{ github.repository }}`",
+                  "color": 16711680,
+                  "fields": [
+                    {
+                      "name": "🔗 Pull Request",
+                      "value": "[View PR](https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }})",
+                      "inline": true
+                    },
+                    {
+                      "name": "🛑 Action Required",
+                      "value": "Please review and remove secrets before merging.",
+                      "inline": false
+                    }
+                  ]
+                }
+              ]
+            }'
+            curl -X POST -H 'Content-Type: application/json' --data "$PAYLOAD" "https://discord.com/api/webhooks/${{ secrets.DISCORD_WEBHOOK }}"
+            echo "::error::Secrets detected in the PR. Check Discord notification for details."
+            exit 1
+          fi
+
+      - name: Upload Gitleaks Report
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.json
+
+      - name: Post GitHub PR Comment on Secret Detection
+        if: failure()
+        uses: mshick/add-pr-comment@v2
+        with:
+          message: |
+            🚨 **Secret Leak Detected!** 🔒
+            Gitleaks has found exposed secrets in this PR. Please review and remove them before merging.
+            [Download the report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) for more details.
+
