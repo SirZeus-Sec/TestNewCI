@@ -12,7 +12,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Required for proper scanning
 
@@ -47,17 +47,10 @@ jobs:
                 }
               ]
             }'
-            curl -X POST -H 'Content-Type: application/json' --data "$PAYLOAD" "https://discord.com/api/webhooks/${{ secrets.DISCORD_WEBHOOK }}"
+            curl -X POST -H 'Content-Type: application/json' --data "$PAYLOAD" "${{ secrets.DISCORD_WEBHOOK }}"
             echo "::error::Secrets detected in the PR. Check Discord notification for details."
             exit 1
           fi
-
-      - name: Upload Gitleaks Report
-        if: failure()
-        uses: actions/upload-artifact@v3
-        with:
-          name: gitleaks-report
-          path: gitleaks-report.json
 
       - name: Post GitHub PR Comment on Secret Detection
         if: failure()
@@ -66,5 +59,4 @@ jobs:
           message: |
             🚨 **Secret Leak Detected!** 🔒
             Gitleaks has found exposed secrets in this PR. Please review and remove them before merging.
-            [Download the report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) for more details.
-
+            [View Action Run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
