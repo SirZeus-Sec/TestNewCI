@@ -1,53 +1,25 @@
-name: TruffleHog Secret Scan
+name: Secret Scan with TruffleHog
 
 on:
-  pull_request:
   push:
-  workflow_dispatch:
-  schedule:
-    - cron: "0 4 * * *" # Run once a day at 4 AM UTC
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
-  scan:
-    name: TruffleHog Secret Scan
+  secret-scan:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout the repository
-      - uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
-          ref: ${{ github.head_ref }} # Necessary for pull request workflow trigger
+      - name: Checkout code
+        uses: actions/checkout@v2
 
-      # Install TruffleHog
       - name: Install TruffleHog
         run: |
-          pip install trufflehog
-          echo "TruffleHog installed successfully."
+          pip install truffleHog
 
-      # Run TruffleHog scan
-      - name: Run TruffleHog Scan
-        id: trufflehog
+      - name: Run TruffleHog
         run: |
-          echo "Running TruffleHog scan on repository $GITHUB_REPOSITORY"
-          echo "Repository URL: https://github.com/${{ github.repository }}"
-          trufflehog --regex --entropy=True "https://github.com/${{ github.repository }}" --debug > result.json 2>&1
-          if [ $? -ne 0 ]; then
-            echo "TruffleHog scan failed with exit code $?. Check logs for errors."
-            cat result.json
-            exit 1
-          fi
-          echo "TruffleHog scan completed successfully."
-
-      # Create PR Comment if Secrets Found
-      - name: Create PR Comment if Secrets Found
-        if: steps.trufflehog.outputs.found_secrets == 'true'
-        run: |
-          echo "Secrets detected. Creating PR comment..."
-          COMMENT="### 🚨 TruffleHog Secret Scan Results 🚨\n\n"
-          COMMENT="${COMMENT}#### Secrets Found:\n"
-          COMMENT="${COMMENT}$(jq -r '.found_secrets[] | "**File:** " + .File + "\n**Reason:** " + .Reason + "\n**Secret:** " + .Secret' result.json)"
-          echo "$COMMENT" > pr_comment.md
-          gh pr comment ${{ github.event.pull_request.number }} --body-file pr_comment.md
-        env:
-          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+          trufflehog --regex --entropy=True https://github.com/$GITHUB_REPOSITORY
