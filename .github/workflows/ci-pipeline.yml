@@ -21,14 +21,17 @@ jobs:
 
       # Install TruffleHog
       - name: Install TruffleHog
-        run: pip install trufflehog
+        run: |
+          pip install trufflehog
+          echo "TruffleHog installed successfully."
 
       # Run TruffleHog scan
       - name: Run TruffleHog Scan
         id: trufflehog
         run: |
           echo "Running TruffleHog scan on repository $GITHUB_REPOSITORY"
-          trufflehog --regex --entropy=True https://github.com/${{ github.repository }} --debug > result.json 2>&1
+          echo "Repository URL: https://github.com/${{ github.repository }}"
+          trufflehog --regex --entropy=True "https://github.com/${{ github.repository }}" --debug > result.json 2>&1
           if [ $? -ne 0 ]; then
             echo "TruffleHog scan failed with exit code $?. Check logs for errors."
             cat result.json
@@ -47,4 +50,4 @@ jobs:
           echo "$COMMENT" > pr_comment.md
           gh pr comment ${{ github.event.pull_request.number }} --body-file pr_comment.md
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
