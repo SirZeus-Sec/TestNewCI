@@ -8,7 +8,7 @@ on:
 
 jobs:
   scan:
-    name: trufflehog
+    name: Run TruffleHog Secret Scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,9 +16,36 @@ jobs:
           fetch-depth: 0
       - name: Install TruffleHog
         run: |
-          pip install truffleHog
+          pip install trufflehog
       - name: Run TruffleHog Secret Scan
+        id: trufflehog_scan
         run: |
-          trufflehog --regex --entropy=True https://github.com/${{ github.repository }}
+          trufflehog --regex --entropy=True https://github.com/${{ github.repository }} > result.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+
+  comment:
+    name: Check for secrets and comment on PR
+    runs-on: ubuntu-latest
+    needs: scan  # This ensures that the `comment` job runs only after `scan` is successful
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check for secrets and comment on PR
+        if: ${{ needs.scan.outputs.trufflehog_scan.outcome == 'success' }}
+        run: |
+          SECRET_COUNT=$(jq '.found_secrets | length' result.json)
+          if [ "$SECRET_COUNT" -gt 0 ]; then
+            echo "Secrets found! Creating PR comment..."
+            COMMENT="### 🚨 TruffleHog Secret Scan Results 🚨\n\n"
+            COMMENT="${COMMENT}#### Secrets Found:\n"
+            COMMENT="${COMMENT}$(jq -r '.found_secrets[] | "**File:** " + .File + "\n**Reason:** " + .Reason + "\n**Secret:** " + .Secret' result.json)"
+            echo "$COMMENT" > pr_comment.md
+            gh pr comment ${{ github.event.pull_request.number }} --body-file pr_comment.md
+          else
+            echo "No secrets found. No comment will be posted."
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
