@@ -1,51 +1,35 @@
-name: trufflehog
+name: Secret Scanning with TruffleHog
+
 on:
   pull_request:
-  push:
-  workflow_dispatch:
-  schedule:
-    - cron: "0 4 * * *" # Run once a day at 4 AM UTC
+    branches:
+      - main  # Change this to match your default branch
 
 jobs:
-  scan:
-    name: Run TruffleHog Secret Scan
+  secret-scan:
+    name: Scan PR for Secrets
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # Ensures full history for diff scanning
+
       - name: Install TruffleHog
         run: |
           pip install trufflehog
-      - name: Run TruffleHog Secret Scan
-        id: trufflehog_scan
-        run: |
-          trufflehog --regex --entropy=True https://github.com/${{ github.repository }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
 
-  comment:
-    name: Check for secrets and comment on PR
-    runs-on: ubuntu-latest
-    needs: scan  # This ensures that the `comment` job runs only after `scan` is successful
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Check for secrets and comment on PR
-        if: ${{ needs.scan.outputs.trufflehog_scan.outcome == 'success' }}
+      - name: Run TruffleHog on PR Diff
         run: |
-          SECRET_COUNT=$(jq '.found_secrets | length' result.json)
-          if [ "$SECRET_COUNT" -gt 0 ]; then
-            echo "Secrets found! Creating PR comment..."
-            COMMENT="### 🚨 TruffleHog Secret Scan Results 🚨\n\n"
-            COMMENT="${COMMENT}#### Secrets Found:\n"
-            COMMENT="${COMMENT}$(jq -r '.found_secrets[] | "**File:** " + .File + "\n**Reason:** " + .Reason + "\n**Secret:** " + .Secret' result.json)"
-            echo "$COMMENT" > pr_comment.md
-            gh pr comment ${{ github.event.pull_request.number }} --body-file pr_comment.md
+          trufflehog git . --only-verified --json > trufflehog_results.json || true
+
+      - name: Fail if secrets are detected
+        run: |
+          if [ -s trufflehog_results.json ]; then
+            echo "Secrets detected!"
+            cat trufflehog_results.json
+            exit 1
           else
-            echo "No secrets found. No comment will be posted."
+            echo "No secrets found."
           fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
